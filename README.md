@@ -5,6 +5,7 @@ A project to restore offline and online functionality to Gwent's Beta version, c
 The code reroutes the calls the Gwent client makes through nginx and Python in order to replicate the now-defunct online functionality.
 
 ## To play
+- You need your own version of exactly Gwent 0.9.24.3.432 to be able to play. Make sure it is unmodified.
 - **Windows:** simply download and run `GwentBetaLauncher.exe`.
 - **Linux/Steam Deck:** simply download, extract and run `GwentBetaLauncher-Linux.tar.gz`.
 
