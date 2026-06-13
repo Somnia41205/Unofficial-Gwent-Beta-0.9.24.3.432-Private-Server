@@ -1,0 +1,35 @@
+{
+  "messages_hash": "",
+  "configs": [
+    {
+      "conditions": {
+        "from": "2000-01-01T00:00:00",
+        "to": "2099-01-01T00:00:00",
+        "game_versions": ["0.9.24"],
+        "is_final": true
+      },
+      "features": {
+        "login": true,
+        "play_ranked": true,
+        "invites": true,
+        "shop": true,
+        "open_keg": true,
+        "gameplay_tutorial": false,
+        "shop_tutorial": false,
+        "deckbuilder_tutorial": false,
+        "booth_version": false,
+        "patch_notes": false,
+        "singleplayer_campaign": true,
+        "skip_license_check": true
+      },
+      "data": {
+        "version": "0.9.24",
+        "hash": "",
+        "patchnotes_version": ""
+      },
+      "messages": [],
+      "infobar": [],
+      "debug": {}
+    }
+  ]
+}

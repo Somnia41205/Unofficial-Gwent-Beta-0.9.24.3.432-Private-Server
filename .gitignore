@@ -1,0 +1,21 @@
+
+# --- Build output ---
+build/
+dist/
+__pycache__/
+*.pyc
+
+# --- Runtime / generated data (do not ship a populated DB) ---
+gwent.db
+data_*.json
+*.log
+Nginx/logs/
+Nginx/temp/
+
+# --- Stale / do-not-ship artifacts ---
+*.OLD-STALE-DO-NOT-USE
+
+# --- Local notes (not for publishing) ---
+reddit_post.md
+deploy/static/users/_gog_request_id=afd981df8ddffb1b&ids=50069134988124048.json
+Nginx/html/users/_gog_request_id=afd981df8ddffb1b&ids=50069134988124048.json

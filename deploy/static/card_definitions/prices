@@ -1,0 +1,13 @@
+{
+  "base_prices": [
+    {"rarity": 1, "premium": false, "crafting_cost": [{"id": 2, "amount": 30}], "milling_profit": [{"id": 2, "amount": 10}], "transmutation_cost": [{"id": 3, "amount": 10}]},
+    {"rarity": 1, "premium": true, "crafting_cost": [{"id": 2, "amount": 200}], "milling_profit": [{"id": 2, "amount": 10}, {"id": 3, "amount": 5}], "transmutation_cost": [{"id": 3, "amount": 10}]},
+    {"rarity": 2, "premium": false, "crafting_cost": [{"id": 2, "amount": 80}], "milling_profit": [{"id": 2, "amount": 20}], "transmutation_cost": [{"id": 3, "amount": 20}]},
+    {"rarity": 2, "premium": true, "crafting_cost": [{"id": 2, "amount": 400}], "milling_profit": [{"id": 2, "amount": 20}, {"id": 3, "amount": 10}], "transmutation_cost": [{"id": 3, "amount": 20}]},
+    {"rarity": 4, "premium": false, "crafting_cost": [{"id": 2, "amount": 200}], "milling_profit": [{"id": 2, "amount": 50}], "transmutation_cost": [{"id": 3, "amount": 50}]},
+    {"rarity": 4, "premium": true, "crafting_cost": [{"id": 2, "amount": 800}], "milling_profit": [{"id": 2, "amount": 50}, {"id": 3, "amount": 25}], "transmutation_cost": [{"id": 3, "amount": 50}]},
+    {"rarity": 8, "premium": false, "crafting_cost": [{"id": 2, "amount": 800}], "milling_profit": [{"id": 2, "amount": 200}], "transmutation_cost": [{"id": 3, "amount": 200}]},
+    {"rarity": 8, "premium": true, "crafting_cost": [{"id": 2, "amount": 1600}], "milling_profit": [{"id": 2, "amount": 200}, {"id": 3, "amount": 50}], "transmutation_cost": [{"id": 3, "amount": 200}]}
+  ],
+  "price_overrides": []
+}

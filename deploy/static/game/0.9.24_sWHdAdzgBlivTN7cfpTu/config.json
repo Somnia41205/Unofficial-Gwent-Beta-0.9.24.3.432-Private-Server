@@ -1,0 +1,38 @@
+{
+  "messages_hash": "",
+  "configs": [
+    {
+      "conditions": {
+        "from": "2017-01-01T00:00:00",
+        "to": "2030-01-01T00:00:00",
+        "game_versions": ["14"],
+        "is_final": false
+      },
+      "features": {
+        "login": true,
+        "play_ranked": true,
+        "invites": true,
+        "shop": true,
+        "open_keg": true,
+        "gameplay_tutorial": false,
+        "shop_tutorial": false,
+        "deckbuilder_tutorial": false,
+        "booth_version": false,
+        "patch_notes": false,
+        "singleplayer_campaign": true,
+		"network": "",
+        "skip_license_check": false,
+		"menu_sections": [],
+		"submenu_sections": []
+      },
+      "data": {
+        "version": "14",
+        "hash": "sWHdAdzgBlivTN7cfpTu",
+        "patchnotes_version": "14"
+      },
+      "messages": [],
+      "infobar": [],
+      "debug": {}
+    }
+  ]
+}

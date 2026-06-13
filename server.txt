@@ -1,0 +1,2 @@
+gwentbetaunofficialserver.duckdns.org
+#Change this to your own url or ip if you want it set as the default network
