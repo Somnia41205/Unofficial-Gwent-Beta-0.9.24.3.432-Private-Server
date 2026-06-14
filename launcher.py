@@ -85,6 +85,44 @@ def _is_local_server(host):
         return h in own
     except Exception:
         return False
+
+
+def _resolve_to_ip(host):
+    """Resolve `host` to a literal IPv4 string ONCE, at launch, while normal DNS
+    is still in effect.
+
+    Why this exists: the local proxies forward to the server by whatever value is
+    in `server_ip` (the bundled DuckDNS default, the user's own hostname, or a raw
+    IP). The launcher then repoints system DNS at 127.0.0.1 (our DNS proxy), which
+    only special-cases *.gog.com and forwards everything else upstream. If the
+    proxy still holds a *hostname*, every forward must getaddrinfo() that hostname
+    through our own DNS redirect -- and a single hiccup there returns
+    `[Errno 11001] getaddrinfo failed` -> 502, collapsing the users.gog.com burst
+    (the "version not supported" / friends / shop disconnect symptom). Resolving to
+    an IP here removes that self-inflicted dependency: the proxy connects by IP and
+    https_proxy.py still sends the original Host header for nginx routing.
+
+    Handles all input shapes:
+      - already an IPv4/IPv6 literal  -> returned unchanged (no lookup).
+      - a hostname (DuckDNS / user's own) -> gethostbyname() once.
+      - localhost / empty             -> returned unchanged (host-mode skips proxies anyway).
+    On ANY failure, returns `host` unchanged so behaviour is no worse than before.
+    """
+    import ipaddress
+    import socket as _socket
+    h = (host or "").strip()
+    if not h:
+        return host
+    try:
+        ipaddress.ip_address(h)   # already a literal IP -> no DNS needed
+        return h
+    except ValueError:
+        pass
+    try:
+        return _socket.gethostbyname(h)
+    except Exception:
+        return host   # fall back to the hostname; no regression vs. prior behaviour
+
 MELONLOADER_URL = "https://github.com/LavaGang/MelonLoader/releases/download/v0.5.7/MelonLoader.x64.zip"
 VCREDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
@@ -1706,10 +1744,18 @@ class GwentLauncher(tk.Tk):
                 self.after(0, lambda: self.launch_status.config(
                     text="Hosting on this PC: using local server directly.", fg=FG_DIM))
             else:
+                # Resolve the server name to an IP ONCE here, while normal DNS is
+                # still active (before set_dns_to_localhost() below). All proxies
+                # then connect by IP, so they never depend on our own DNS redirect
+                # to resolve the server hostname. https_proxy.py preserves the
+                # original Host header, so nginx routing is unaffected. Falls back
+                # to the hostname if resolution fails (no regression).
+                proxy_target = _resolve_to_ip(server_ip)
+
                 # Start local HTTPS reverse proxy (solves Galaxy SDK TLS issue)
                 self.after(0, lambda: self.launch_status.config(text="Starting local proxy...", fg=FG_DIM))
                 try:
-                    start_https_proxy_thread(CERT_FILE, KEY_FILE, server_ip)
+                    start_https_proxy_thread(CERT_FILE, KEY_FILE, proxy_target)
                     time.sleep(0.3)
                 except Exception as e:
                     self.after(0, lambda: self.launch_status.config(
@@ -1717,7 +1763,7 @@ class GwentLauncher(tk.Tk):
 
                 # Start broker proxy (forwards WebSocket connections to remote server)
                 try:
-                    start_broker_proxy_thread(CERT_FILE, KEY_FILE, server_ip)
+                    start_broker_proxy_thread(CERT_FILE, KEY_FILE, proxy_target)
                     time.sleep(0.1)
                 except Exception as e:
                     self.after(0, lambda: self.launch_status.config(
@@ -1725,7 +1771,7 @@ class GwentLauncher(tk.Tk):
 
                 # Start relay proxy (forwards game relay on port 7777)
                 try:
-                    start_relay_proxy_thread(server_ip)
+                    start_relay_proxy_thread(proxy_target)
                     time.sleep(0.1)
                 except Exception as e:
                     self.after(0, lambda: self.launch_status.config(
@@ -1733,7 +1779,7 @@ class GwentLauncher(tk.Tk):
 
                 # Start internal proxy (plain HTTP for game invitations on port 8447)
                 try:
-                    start_internal_proxy_thread(server_ip)
+                    start_internal_proxy_thread(proxy_target)
                     time.sleep(0.1)
                 except Exception as e:
                     self.after(0, lambda: self.launch_status.config(

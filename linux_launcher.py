@@ -73,6 +73,40 @@ def _resolve_server_host():
 
 SERVER_IP = _resolve_server_host()
 SERVER_URL = f"https://{SERVER_IP}"
+
+
+def _resolve_to_ip(host):
+    """Resolve `host` to a literal IP string ONCE, at launch, while normal DNS
+    is still in effect (before resolv.conf is repointed at 127.0.0.1).
+
+    The local proxies forward to the server by whatever value is in `server_ip`
+    (the bundled DuckDNS default, the user's own hostname, or a raw IP). Once the
+    launcher repoints resolv.conf/hosts at our DNS proxy -- which only
+    special-cases *.gog.com and forwards everything else upstream -- a proxy that
+    still holds a *hostname* must resolve it through our own redirect on every
+    forward. A single hiccup there returns `[Errno 11001] getaddrinfo failed` ->
+    502 and collapses the users.gog.com burst. Resolving to an IP here removes
+    that self-inflicted dependency; https_proxy.py still sends the original Host
+    header so nginx routing is unaffected.
+
+    Handles all input shapes: a literal IP returns unchanged (no lookup); a
+    hostname is resolved once; localhost/empty return unchanged. On ANY failure
+    it returns `host` unchanged, so behaviour is no worse than before.
+    """
+    import ipaddress
+    h = (host or "").strip()
+    if not h:
+        return host
+    try:
+        ipaddress.ip_address(h)   # already a literal IP -> no DNS needed
+        return h
+    except ValueError:
+        pass
+    try:
+        return socket.gethostbyname(h)
+    except Exception:
+        return host   # fall back to the hostname; no regression vs. prior behaviour
+
 MELONLOADER_URL = (
     "https://github.com/LavaGang/MelonLoader/releases/"
     "download/v0.5.7/MelonLoader.x64.zip"
@@ -3059,10 +3093,17 @@ class GwentLinuxLauncher(tk.Tk):
 
             # ── HTTPS / broker / relay proxies ──────────────────────────
             if not self._proxies_started:
+                # Resolve the server name to an IP ONCE here, while normal DNS is
+                # still active (before write_resolv_localhost() below repoints it
+                # at our DNS proxy). All proxies then connect by IP and never
+                # depend on our own redirect to resolve the server hostname.
+                # Falls back to the hostname if resolution fails (no regression).
+                proxy_target = _resolve_to_ip(server_ip)
+
                 self.after(0, lambda: self.launch_status.config(
                     text="Starting local HTTPS proxy...", fg=FG_DIM))
                 try:
-                    start_https_proxy_thread(CERT_FILE, KEY_FILE, server_ip)
+                    start_https_proxy_thread(CERT_FILE, KEY_FILE, proxy_target)
                     time.sleep(0.3)
                 except Exception as e:
                     self.after(0, lambda: self.launch_status.config(
@@ -3070,12 +3111,12 @@ class GwentLinuxLauncher(tk.Tk):
                     return
 
                 try:
-                    start_broker_proxy_thread(CERT_FILE, KEY_FILE, server_ip)
+                    start_broker_proxy_thread(CERT_FILE, KEY_FILE, proxy_target)
                     time.sleep(0.1)
                 except Exception as e:
                     log(f"broker proxy failed: {e}")
                 try:
-                    start_relay_proxy_thread(server_ip)
+                    start_relay_proxy_thread(proxy_target)
                     time.sleep(0.1)
                 except Exception as e:
                     log(f"relay proxy failed: {e}")
