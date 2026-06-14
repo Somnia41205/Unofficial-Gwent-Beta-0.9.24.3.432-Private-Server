@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -42,6 +42,7 @@ namespace GwentBetaRestorationMod
         private static HarmonyLib.Harmony _harmony;
         private static bool _latePatched = false;
         private static int _frameCount = 0;
+        private static bool _warnedWaitingForSettings = false;
 
         public override void OnInitializeMelon()
         {
@@ -78,23 +79,38 @@ namespace GwentBetaRestorationMod
             if (!_latePatched)
             {
                 _frameCount++;
-                // Wait for GwentSettings to finish its (I/O-bound) init before
-                // patching BattleSetupFactory. Touching that type before its
-                // ..cctor can run GwentSettings.get_Instance throws
-                // TypeInitializationException and PERMANENTLY poisons the type
-                // for the process (no retry possible). 300 frames was enough on
-                // the Deck but races on slow hosts (e.g. a ~15fps VM, where the
-                // frame counter outruns asset init). 1500 gives ample wall-clock
-                // headroom: ~25s at 60fps, ~100s at 15fps, still well before any
-                // match is set up. If it still races on a very slow host, a
-                // restart clears it.
-                if (_frameCount >= 750)
+
+                // The deferred BattleSetupFactory patch can ONLY be applied once
+                // RedTools.GwentSettings has finished its (I/O-bound) init.
+                // Harmony-patching BattleSetupFactory.CreateClientConnector forces
+                // that type's ..cctor to run, and the ..cctor reads
+                // RedKit.Settings -> GwentSettings.Instance. If GwentSettings isn't
+                // ready yet, get_Instance throws, which surfaces as a
+                // TypeInitializationException and PERMANENTLY poisons
+                // BattleSetupFactory for the rest of the process (no retry possible).
+                //
+                // A fixed frame count was a proxy for "settings are ready" and is
+                // inherently racy: on a slow-initializing / fast-rendering host the
+                // frame counter outran asset init and the patch fired too early,
+                // poisoning the type (this is exactly the IL Compile Error /
+                // "GwentSettings are not yet initialized" crash). Instead, probe the
+                // real dependency: try to touch GwentSettings.Instance directly (the
+                // same call the ..cctor makes) inside a try/catch. While it is not
+                // ready the getter throws, we swallow it and try again next frame;
+                // touching GwentSettings.Instance does NOT touch BattleSetupFactory,
+                // so nothing gets poisoned. Only once the probe succeeds do we let
+                // Harmony patch BattleSetupFactory, at which point its ..cctor is
+                // guaranteed to succeed.
+                //
+                // A small frame floor avoids hammering the getter from the very
+                // first frames; readiness, not the floor, is what actually gates.
+                if (_frameCount >= 60 && IsGwentSettingsReady())
                 {
                     _latePatched = true;
                     try
                     {
                         Patch_BattleSetupFactory_CreateClientConnector.ApplyManually(_harmony);
-                        LoggerInstance.Msg("BattleSetupFactory patch applied successfully.");
+                        LoggerInstance.Msg("BattleSetupFactory patch applied successfully (settings ready at frame " + _frameCount + ").");
 
                         Patch_RequestPlayCardAction_ForceResolve.ApplyManually(_harmony);
                         Patch_TurnGameState_OnUpdate.ApplyManually(_harmony);
@@ -107,6 +123,30 @@ namespace GwentBetaRestorationMod
                         LoggerInstance.Error("Failed to apply BattleSetupFactory patch: " + ex);
                     }
                 }
+                else if (!_warnedWaitingForSettings && _frameCount >= 60)
+                {
+                    _warnedWaitingForSettings = true;
+                    LoggerInstance.Msg("Waiting for GwentSettings to initialize before applying BattleSetupFactory patch...");
+                }
+            }
+        }
+
+        // Returns true once RedTools.GwentSettings is initialized enough that
+        // touching its Instance no longer throws. Probing Instance is exactly what
+        // BattleSetupFactory's static ctor does internally, so a successful probe
+        // here guarantees the ..cctor will not throw when Harmony patches the type.
+        // IMPORTANT: this must NOT reference BattleSetupFactory in any way, or it
+        // would trigger (and potentially poison) that type's initializer early.
+        private static bool IsGwentSettingsReady()
+        {
+            try
+            {
+                return RedTools.GwentSettings.Instance != null;
+            }
+            catch
+            {
+                // Not initialized yet ("GwentSettings are not yet initialized...").
+                return false;
             }
         }
     }
@@ -2019,6 +2059,7 @@ namespace GwentBetaRestorationMod
             }
         }
     }
+
 
 
 }
