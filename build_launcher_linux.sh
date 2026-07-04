@@ -29,6 +29,10 @@ required=(
     "comet-main/dummy-service/GalaxyCommunication.exe"
     "settings/config.json"
     "settings/Launch.cfg"
+    "dxvk/x64/d3d11.dll"
+    "dxvk/x64/dxgi.dll"
+    "dxvk/x32/d3d11.dll"
+    "dxvk/x32/dxgi.dll"
 )
 for f in "${required[@]}"; do
     if [[ ! -f "$f" ]]; then
@@ -68,6 +72,10 @@ PI_FLAGS=(
     --add-data "Nginx/conf/fake.crt:."
     --add-data "Nginx/conf/fake.key:."
     --add-data "$DLL:."
+    --add-data "dxvk/x64/d3d11.dll:dxvk/x64"
+    --add-data "dxvk/x64/dxgi.dll:dxvk/x64"
+    --add-data "dxvk/x32/d3d11.dll:dxvk/x32"
+    --add-data "dxvk/x32/dxgi.dll:dxvk/x32"
     --add-data "comet-main/dummy-service/GalaxyCommunication.exe:."
     --add-data "settings/config.json:settings"
     --add-data "settings/Launch.cfg:settings"

@@ -177,6 +177,14 @@ KEY_FILE = os.path.join(BUNDLE_DIR, "fake.key")
 MOD_DLL = os.path.join(BUNDLE_DIR, "GwentBetaRestorationMod.dll")
 GALAXY_COMM_EXE = os.path.join(BUNDLE_DIR, "GalaxyCommunication.exe")
 
+# DXVK (D3D11 -> Vulkan). Bundled DLLs are dropped into the prefix so Gwent's
+# Direct3D 11 renderer runs on Vulkan instead of Wine's slow wined3d->OpenGL
+# path -- a large CPU win on the Deck. Bump DXVK_VERSION to force a reinstall.
+DXVK_VERSION = "2.3.1"
+DXVK_X64_DIR = os.path.join(BUNDLE_DIR, "dxvk", "x64")
+DXVK_X32_DIR = os.path.join(BUNDLE_DIR, "dxvk", "x32")
+DXVK_DLLS = ("d3d11.dll", "dxgi.dll")
+
 # Where the dummy service lives inside the WINEPREFIX (matches GOG layout)
 SERVICE_REL_DIR = os.path.join("drive_c", "ProgramData", "GOG.com",
                                "Galaxy", "redists")
@@ -716,9 +724,12 @@ def flatpak_wine_cmd(env):
           "--share=network",
           "--device=all",
           "--socket=x11", "--socket=wayland", "--socket=pulseaudio"]
-    # Forward the env vars wine needs across the sandbox boundary.
+    # Forward the env vars wine needs across the sandbox boundary. flatpak does
+    # NOT inherit the parent env, so WINEESYNC/WINEFSYNC/DXVK_* must be listed
+    # here explicitly or DXVK and esync/fsync stay off inside the sandbox.
     for key in ("WINEPREFIX", "WINEDEBUG", "WINEDLLOVERRIDES", "DISPLAY",
-                "WAYLAND_DISPLAY", "XAUTHORITY", "PULSE_SERVER"):
+                "WAYLAND_DISPLAY", "XAUTHORITY", "PULSE_SERVER",
+                "WINEESYNC", "WINEFSYNC", "DXVK_STATE_CACHE_PATH", "DXVK_HUD"):
         if env.get(key):
             fp.append("--env=%s=%s" % (key, env[key]))
     fp.append(FLATPAK_WINE_ID)
@@ -1012,9 +1023,22 @@ def prefix_env(runner, prefix_dir):
     env = clean_subprocess_env()
     env["WINEPREFIX"] = prefix_dir
     env["WINEDEBUG"] = env.get("WINEDEBUG", "-all")
+    # d3d11=n;dxgi=n forces Wine to load the native (DXVK) DLLs we dropped into
+    # the prefix instead of its built-in wined3d ones.
     env["WINEDLLOVERRIDES"] = env.get(
-        "WINEDLLOVERRIDES", "winhttp=n,b;version=n,b"
+        "WINEDLLOVERRIDES", "winhttp=n,b;version=n,b;d3d11=n;dxgi=n"
     )
+    # esync/fsync cut Wine's synchronization overhead -- meaningful on the Deck's
+    # CPU. fsync needs a futex2-capable kernel (SteamOS has it); Wine silently
+    # falls back to esync, then to server-side sync, if unsupported.
+    env.setdefault("WINEESYNC", "1")
+    env.setdefault("WINEFSYNC", "1")
+    # Persist DXVK's shader cache in the prefix so post-first-run stutter drops.
+    env.setdefault("DXVK_STATE_CACHE_PATH", prefix_dir)
+    # Frametime/fps overlay for measuring the win. Off unless the user opts in
+    # via the launcher env (DXVK_HUD=fps,gpuload etc.).
+    if os.environ.get("DXVK_HUD"):
+        env["DXVK_HUD"] = os.environ["DXVK_HUD"]
     return env
 
 
@@ -1217,6 +1241,47 @@ def install_mod_dll(gwent_path):
     mods = os.path.join(gwent_path, "Mods")
     os.makedirs(mods, exist_ok=True)
     shutil.copy2(MOD_DLL, os.path.join(mods, "GwentBetaRestorationMod.dll"))
+    return True
+
+
+def install_dxvk(prefix_dir):
+    """Copy the bundled DXVK d3d11/dxgi DLLs into the prefix so Gwent renders
+    through Vulkan. x64 -> system32, x32 -> syswow64 (WoW64 layout: 64-bit DLLs
+    live in system32). Idempotent -- a version stamp is written after a
+    successful copy and skips the work on later launches. Returns True if DXVK
+    is present in the prefix afterwards.
+    """
+    if not os.path.isdir(DXVK_X64_DIR):
+        log("install_dxvk: bundled DXVK missing -- skipping (game will use "
+            "wined3d)")
+        return False
+    stamp = os.path.join(prefix_dir, ".dxvk_version")
+    try:
+        if os.path.isfile(stamp) and open(stamp).read().strip() == DXVK_VERSION:
+            return True
+    except Exception:
+        pass  # unreadable stamp -> reinstall
+    targets = (
+        (DXVK_X64_DIR, os.path.join(prefix_dir, "drive_c", "windows",
+                                    "system32")),
+        (DXVK_X32_DIR, os.path.join(prefix_dir, "drive_c", "windows",
+                                    "syswow64")),
+    )
+    for src_dir, dst_dir in targets:
+        if not os.path.isdir(dst_dir):
+            # 32-bit syswow64 only exists in a WoW64 (win64) prefix; if it's
+            # absent the prefix is 32-bit-only and the x32 copy is skipped.
+            log(f"install_dxvk: {dst_dir} absent -- skipping {src_dir}")
+            continue
+        for dll in DXVK_DLLS:
+            shutil.copy2(os.path.join(src_dir, dll),
+                         os.path.join(dst_dir, dll))
+    try:
+        with open(stamp, "w") as fh:
+            fh.write(DXVK_VERSION)
+    except Exception as e:
+        log(f"install_dxvk: could not write version stamp: {e}")
+    log(f"install_dxvk: DXVK {DXVK_VERSION} installed into {prefix_dir}")
     return True
 
 
@@ -3087,6 +3152,10 @@ class GwentLinuxLauncher(tk.Tk):
             install_mod_dll(gwent_path)
             install_settings(gwent_path)
             fix_game_file_owner(gwent_path)
+            # Drop DXVK into the prefix so Gwent renders through Vulkan instead
+            # of wined3d. Idempotent (version-stamped); must precede launch so
+            # the d3d11=n;dxgi=n overrides resolve to native DLLs.
+            install_dxvk(prefix_dir)
             # Make sure GalaxyCommunication service is registered + running
             # inside the prefix. Idempotent -- re-create errors are ignored.
             install_dummy_service_in_prefix(self.runner, prefix_dir)
