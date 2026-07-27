@@ -11,6 +11,8 @@ The code reroutes the calls the Gwent client makes through nginx and Python in o
 
 See the [**Player Guide**](docs/PLAYER_GUIDE.md) for a walkthrough, and [**Features**](docs/FEATURES.md) for what's available.
 
+Join the Discord server to find games at https://discord.gg/vQJKnxKXG
+
 ## Host your own server
 
 If you want to run your own server, [**SERVER_SETUP.md**](docs/SERVER_SETUP.md) is a step-by-step guide for hosting on a free cloud VPS, and the [**Host Guide**](docs/HOST_GUIDE.md) covers LAN and internet play.
